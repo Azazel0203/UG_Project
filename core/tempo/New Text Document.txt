@@ -1,0 +1,396 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include "MAX30105.h"
+#include "heartRate.h"
+#include "spo2_algorithm.h"
+
+
+MAX30105 particleSensor;
+
+#define REPORTING_PERIOD_MS 1000 // frequency of updates sent to blynk app in ms
+
+#define debug Serial
+uint32_t tsLastReport = 0; 
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define SCREEN_ADDRESS 0x3C
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+
+
+const byte RATE_SIZE = 4; // Increase this for more averaging. 4 is good.
+byte rates[RATE_SIZE];      // Array of heart rates
+byte rateSpot = 0;
+long lastBeat = 0; // Time at which the last beat occurred
+// long irValue = 0;
+
+double running_mean = 0.0;
+double running_std = 1.0;
+bool show_graph = false;
+int show_graph_counter = 0;
+long Irs[128] = {0};
+
+
+float beatsPerMinute;
+int beatAvg = 0;
+float floatAvg;
+bool flag = false;
+
+const byte RATE_SIZE_OX = 100;
+byte rates_OX[RATE_SIZE_OX];
+byte rateSpot_OX = 0;
+float spo2Avg;
+
+
+
+
+int32_t bufferLength; //data length
+int32_t spo2 = 0; //SPO2 value
+int8_t validSPO2; //indicator to show if the SPO2 calculation is valid
+int32_t heartRate; //heart rate value
+int8_t validHeartRate; //indicator to show if the heart rate calculation is valid
+uint32_t irBuffer[100] = {0}; //infrared LED sensor data
+uint32_t redBuffer[100] = {0};  //red LED sensor data
+
+// int32_t bufferLength;             //data length
+const int irThresh = 50000;
+
+
+
+long preva = 50;
+long a;
+
+//No finger Variables
+long NOFingerTime= 5000;
+
+// Finger Detection
+bool finger = true;
+
+
+
+void setup()
+{
+  debug.begin(9600);
+  // debug.println("MAX30105 Basic Readings Example");
+  if (particleSensor.begin() == false)
+  {
+    debug.println("MAX30105 was not found. Please check wiring/power. ");
+    while (1)
+      ;
+  }
+  // Serial.println("Place your index finger on the sensor with steady pressure.");
+  particleSensor.setup(); // Configure sensor. Use 6.4mA for LED drive
+  // particleSensor.setPulseAmplitudeRed(0x0A); // Turn Red LED to low to indicate sensor is running
+  // particleSensor.setPulseAmplitudeGreen(0);  // Turn off Green LED
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
+  {
+    debug.println(F("SSD1306 allocation failed"));
+    for (;;)
+      ;
+  }
+  display.clearDisplay();
+  lastBeat = millis(); // Initialize lastBeat
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.setTextColor(SSD1306_WHITE);
+  // particleSensor.setup();
+  byte ledBrightness = 60; //Options: 0=Off to 255=50mA
+  byte sampleAverage = 4; //Options: 1, 2, 4, 8, 16, 32
+  byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
+  byte sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
+  int pulseWidth = 411; //Options: 69, 118, 215, 411
+  int adcRange = 4096; //Options: 2048, 4096, 8192, 16384
+  // particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange);
+  
+}
+void ready_display(int x, int y){
+  display.clearDisplay();
+  display.setCursor(x, y);
+}
+
+
+void clearAllVar() {
+  tsLastReport = 0;  //stores the time the last update was sent to the blynk app
+  // Sensor Variables
+  for (int i = 0; i < 100; i++) {
+    irBuffer[i] = 0;
+    redBuffer[i] = 0;
+  }
+  // Maxim Variables
+  spo2 = 98; //SPO2 value
+  validSPO2 = 0; //indicator to show if the SPO2 calculation is valid
+  heartRate = 125; //heart rate value
+  validHeartRate = 0; //indicator to show if the heart rate calculation is valid
+  beatsPerMinute = 0;
+  beatAvg = 0;
+  floatAvg = 0.0;
+  for (int i = 0; i < RATE_SIZE; i++) {
+    rates[i] = heartRate;
+  }
+  rateSpot = 0;
+  lastBeat = 0;
+  for (int i = 0; i < RATE_SIZE_OX ; i++) {
+    rates_OX[i] = spo2;
+  }
+  rateSpot_OX = 0;
+  spo2Avg = 0.0;
+  preva = 50;
+  a = 0;
+  finger = true;
+}
+
+
+void print_stuff(long irValue){
+  Serial.print("IR=");
+  Serial.print(irValue);
+  Serial.print(", BPM=");
+  Serial.print(heartRate);
+  Serial.print(", Avg BPM=");
+  Serial.print(beatAvg);
+  Serial.print(", Cal. BPM=");
+  Serial.print(floatAvg);
+  Serial.print(", Cal. spO2=");
+  Serial.print(spo2Avg);
+}
+
+void heart_rate(){
+  rates[rateSpot++] = (byte)heartRate; //Store this reading in the array
+  rateSpot %= RATE_SIZE; //Wrap variable
+  //Take average of readings
+  beatAvg = 0;
+  for (byte x = 0 ; x < RATE_SIZE ; x++)
+    beatAvg += rates[x];
+  beatAvg /= RATE_SIZE;
+  floatAvg = float(beatAvg) * (93.00 / 136.00);
+}
+
+void oxygen(){
+  rates_OX[rateSpot_OX++] = (byte)spo2; //Store this reading in the array
+  rateSpot_OX %= RATE_SIZE_OX; //Wrap variable
+  //Take average of readings
+  spo2Avg = 0;
+  for (byte x = 0 ; x < RATE_SIZE_OX ; x++)
+    spo2Avg += rates_OX[x];
+  spo2Avg /= RATE_SIZE_OX;
+}
+
+void no_finger(){
+  ready_display(10, 24);
+  Serial.println(" No finger?");
+  display.setTextSize(2);
+  display.setTextColor(1);
+  display.println("NO FINGER");
+  display.display();
+  delay(1000);
+}
+
+
+void loop()
+{
+victor:
+  clearAllVar();
+  bufferLength = 100; //buffer length of 100 stores 4 seconds of samples running at 25sps
+  long initialTime = millis(); // paperboy
+  long waitingTime = 6000;
+
+  //read the first 100 samples, and determine the signal range
+  for (byte i = 0 ; i < bufferLength ; i++)
+  {
+    while (particleSensor.available() == false) //do we have new data?
+      particleSensor.check(); //Check the sensor for new data
+    redBuffer[i] = particleSensor.getRed();
+    irBuffer[i] = particleSensor.getIR();
+    long irValue = irBuffer[i];
+
+    print_stuff(irValue);
+    bool f=1;
+    int startTimeVal=-1;
+    while (irValue < irThresh) {
+      no_finger();
+      while (particleSensor.available() == false) //do we have new data?
+        particleSensor.check(); //Check the sensor for new data
+      redBuffer[i] = particleSensor.getRed();
+      irBuffer[i] = particleSensor.getIR();
+      irValue = irBuffer[i];
+      if(f)
+        {
+          f=0;
+          startTimeVal= millis();
+        }
+        else{
+          if(millis()-startTimeVal>NOFingerTime)
+          {
+            goto victor;        
+          }
+        }
+    }
+
+
+
+    Serial.println();
+    particleSensor.nextSample(); 
+
+
+    if (millis() - initialTime < waitingTime) {
+      a = waitingTime / 1000 - (millis() - initialTime) / 1000;
+      if (preva != a) {
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(1);
+        display.setCursor(0, 0);
+        display.println("Please wait...");
+        display.setCursor(0, 36);
+        display.println("Time Left: ");
+        display.setCursor(0, 47);
+        display.setTextSize(2);
+        display.print(a);
+        display.display();
+        // HeartAnimation();
+      }
+      preva = a;
+    }
+  }
+  //calculate heart rate and SpO2 after first 100 samples (first 4 seconds of samples)
+  maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+
+  if (heartRate < 255 && heartRate > 20)
+    heart_rate();
+
+  if (spo2 > 0)
+    oxygen();
+
+  while (1)
+  {
+    finger = true;
+    //dumping the first 25 sets of samples in the memory and shift the last 75 sets of samples to the top
+    for (byte i = 25; i < 100; i++)
+    {
+      redBuffer[i - 25] = redBuffer[i];
+      irBuffer[i - 25] = irBuffer[i];
+    }
+    //take 25 sets of samples before calculating the heart rate.
+    for (byte i = 75; i < 100; i++)
+    {
+      redBuffer[i - 75] = redBuffer[i - 50];
+      irBuffer[i - 75] = irBuffer[i - 50];
+      while (particleSensor.available() == false) //do we have new data?
+        particleSensor.check(); //Check the sensor for new data
+
+      redBuffer[i] = particleSensor.getRed();
+      irBuffer[i] = particleSensor.getIR();
+
+
+      long irValue = irBuffer[i];
+      maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+      if (heartRate < 255 && heartRate > 20)
+        heart_rate();
+
+      if (spo2 > 0)
+        oxygen();
+
+      print_stuff(irValue);
+      bool f=1;
+      int startTimeVal=-1;
+      while (irValue < irThresh) {
+        finger = false;
+        no_finger();
+        while (particleSensor.available() == false) //do we have new data?
+          particleSensor.check(); //Check the sensor for new data
+        redBuffer[i] = particleSensor.getRed();
+        irBuffer[i] = particleSensor.getIR();
+        irValue = irBuffer[i];
+
+        if(f)
+        {
+          f=0;
+          startTimeVal= millis();
+        }
+        else{
+          if(millis()-startTimeVal>NOFingerTime)
+          {
+            goto victor;        
+          }
+        }
+      }
+
+      Serial.println();
+
+      particleSensor.nextSample(); //We're finished with this sample so move to next sample
+
+    
+
+      if (millis() - tsLastReport > REPORTING_PERIOD_MS)
+      {
+        // Blynk.virtualWrite(V0, !finger);
+
+        if (millis() - initialTime < waitingTime) {
+          a = waitingTime / 1000 - (millis() - initialTime) / 1000;
+          if (preva != a) {
+            display.clearDisplay();
+            display.setTextSize(1);
+            display.setTextColor(1);
+            display.setCursor(0, 0);
+            display.println("Please wait...");
+            display.setCursor(0, 36);
+            display.println("Time Left: ");
+            display.setCursor(0, 47);
+            display.setTextSize(2);
+            display.print(a);
+            display.display();
+            // HeartAnimation();
+          }
+          preva = a;
+        } else {
+          if (!finger) {
+
+            no_finger();
+//            goto victor;
+          } else {
+
+
+            if (finger && int(spo2Avg) < 90) {
+              // Blynk.logEvent("lowspo2", "Your SPO2 is below 90%");
+            }
+
+            display.clearDisplay();
+
+            display.setTextSize(2);
+            display.setTextColor(1);
+            display.setCursor(0, 0);
+            display.println("BPM:");
+
+            display.setTextSize(2);
+            display.setTextColor(1);
+            display.setCursor(0, 15);
+            display.println(int(floatAvg));
+
+            display.setTextSize(2);
+            display.setTextColor(1);
+            display.setCursor(0, 31);
+            display.println("SPO2:");
+
+            display.setTextSize(2);
+            display.setTextColor(1);
+            display.setCursor(0, 46);
+
+            display.println(int(spo2Avg));
+            display.display();
+
+            // HeartAnimation();
+          }
+        }
+
+        tsLastReport = millis();
+      }
+    }
+
+    //After gathering 25 new samples recalculate HR and SP02
+    //    maxim_heart_rate_and_oxygen_saturation(irBuffer, bufferLength, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+  }
+}
+
+
+

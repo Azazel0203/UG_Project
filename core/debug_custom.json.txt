@@ -1,0 +1,6 @@
+{
+  "servertype": "jlink",
+  "device": "ATSAMD21G18",
+  "interface": "SWD",
+  "serverpath": ""C:\Users\aadar\OneDrive\Desktop\main_ugproject\JLink_V794f\JLinkGDBServerCL.exe""
+}

@@ -1,0 +1,55 @@
+**Heartrate and Spo2 Monitor**
+
+**Introduction**
+
+The Heartrate and Spo2 Monitor is an ESP32-based health monitoring device that provides real-time tracking of heart rate (BPM) and blood oxygen saturation (SpO2). This device utilizes the MAX30105 pulse oximeter sensor, an OLED display, and integrates with Blynk for remote monitoring.
+
+**Libraries Used**
+
+- *Wire*: I2C communication protocol.
+- *Adafruit_GFX* and *Adafruit_SSD1306*: Libraries for OLED display.
+- *MAX30105*: Driver for the MAX30105 sensor.
+- *heartRate*: Library for heart rate calculation.
+- *WiFi*, *WiFiClient*, *BlynkSimpleEsp32*: Libraries for Wi-Fi connection and Blynk integration.
+- *spo2_algorithm* and *DFRobot_Heartrate*: Libraries for Spo2 calculation and heart rate algorithm.
+
+**Global Variables**
+
+- *BLYNK_TEMPLATE_ID*, *BLYNK_TEMPLATE_NAME*, *BLYNK_AUTH_TOKEN*: Blynk template information.
+- *particleSensor*: Object of MAX30105 sensor.
+- *display*: Object of OLED display.
+- Various variables for heart rate and Spo2 calculations, network details (`ssid` and `pass`), and others.
+
+**Functions**
+
+1. *blynk_send(long irSensorValue)*: Sends sensor data to Blynk.
+2. *BlynkSetup()*: Initializes Blynk and sets initial values.
+3. *ready_display(int x, int y)*: Clears display and sets cursor position.
+4. *clearAllVar()*: Resets all variables to initial values.
+5. *print_stuff(long irValue)*: Prints sensor data to Serial.
+6. *heart_rate()*: Calculates and updates heart rate-related variables.
+7. *oxygen()*: Calculates and updates Spo2-related variables.
+8. *no_finger()*: Displays "NO FINGER" message on the OLED screen.
+
+**Setup**
+
+- Initializes peripherals, Blynk, and MAX30105 sensor.
+- Sets up the OLED display.
+- Configures parameters for the MAX30105 sensor.
+
+**Main Loop (`loop()`)**
+
+1. Clears variables and runs Blynk.
+2. Reads sensor data and waits for a finger to be detected.
+3. Calculates heart rate and Spo2.
+4. Monitors the status of a finger on the sensor.
+5. Sends data to Blynk and displays values on OLED.
+6. Checks for low Spo2 and logs an event.
+
+**Conclusion**
+
+The code continuously monitors heart rate and Spo2 levels using the MAX30105 sensor, communicates with Blynk for remote monitoring, and displays real-time data on an OLED screen. It incorporates features like handling the absence of a finger, logging events, and providing visual feedback on the display. Ensure the Blynk app is configured with the correct template and token for proper functionality.
+
+--- 
+
+This documentation provides a detailed overview of the code structure, functions, and libraries used in the Heartrate and Spo2 Monitor.
