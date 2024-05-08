@@ -11,8 +11,10 @@
 #include <WiFiClient.h>
 #include <BlynkSimpleEsp32.h>
 #include "spo2_algorithm.h"
-#include "DFRobot_Heartrate.h"
+// #include "DFRobot_Heartrate.h"
 MAX30105 particleSensor;
+const int heartPin = A1;
+
 #define REPORTING_PERIOD_MS 1000
 #define debug Serial
 uint32_t tsLastReport = 0; 
@@ -22,7 +24,7 @@ uint32_t tsLastReport = 0;
 #define SCREEN_ADDRESS 0x3C
 #define heartratePin A1
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-DFRobot_Heartrate heartrate(DIGITAL_MODE);
+// DFRobot_Heartrate heartrate(DIGITAL_MODE);
 const byte RATE_SIZE = 4; 
 byte rates[RATE_SIZE];      
 byte rateSpot = 0;
@@ -48,7 +50,9 @@ long a;
 long NOFingerTime= 5000;
 bool finger = true;
 
-long irvalue = 0;
+long irValue = 0;
+
+int ecg = 0;
 
 
 
@@ -161,16 +165,28 @@ void clearAllVar() {
 /*The `print_stuff` function is responsible for printing the values of various variables to the Serial monitor. It takes the `irValue` as a parameter and prints the values of `irValue`, `heartRate`, `beatAvg`, `floatAvg`, and `spo2Avg`. 
 This function is used for debugging purposes to monitor the values of these variables during the program execution.*/
 void print_stuff(){
-  Serial.print("IR=");
-  Serial.print(irvalue);
-  Serial.print(", BPM=");
+  // Serial.print("IR=");
+  // Serial.print(irValue);
+  Serial.print(particleSensor.getRed());
+  Serial.print(',');
+  Serial.print(particleSensor.getRed());
+  Serial.print(',');
+  // Serial.print(", BPM=");
   Serial.print(heartRate);
-  Serial.print(", Avg BPM=");
+  Serial.print(',');
+  // Serial.print(", Avg BPM=");
   Serial.print(beatAvg);
-  Serial.print(", Cal. BPM=");
+  Serial.print(',');
+  // Serial.print(", Cal. BPM=");
   Serial.print(floatAvg);
-  Serial.print(", Cal. spO2=");
+  Serial.print(',');
+  // Serial.print(", Cal. spO2=");
   Serial.print(spo2Avg);
+  Serial.print(',');
+  Serial.print(0);
+  Serial.print(',');
+  Serial.println(analogRead(heartPin));
+  delay(100);
 }
 
 /*The `heart_rate()` function is responsible for calculating the average heart rate based on the current heart rate value.*/
@@ -204,7 +220,7 @@ void no_finger(){
 }
 
 void display_stuff(){
-  display.println("IR: " + String(irvalue));
+  display.println("IR: " + String(irValue));
   display.println("BPM: " + String(beatsPerMinute));
   display.println("Avg: " + String(beatAvg));
   display.println("Spo2: " + String(spo2));

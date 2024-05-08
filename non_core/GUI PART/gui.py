@@ -5,7 +5,18 @@ from matplotlib.figure import Figure
 import serial
 import threading
 import numpy as np
-from LPF import butter_lowpass_filter
+import numpy as np
+from scipy.signal import butter, lfilter, freqz
+import matplotlib.pyplot as plt
+
+
+def butter_lowpass(cutoff, fs, order=2):
+    return butter(order, cutoff, fs=fs, btype='low', analog=False)
+
+def butter_lowpass_filter(data, cutoff, fs, order=2):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
 
 import csv
 from datetime import datetime
@@ -180,9 +191,9 @@ class DataPlotter:
         self.data_values_ecg = np.append(self.data_values_ecg, float(ecg))
         # print(f"max -> {np.max(self.data_values_ecg)} | min -> {np.min(self.data_values_ecg)}")
         window_size = 5
-        if self.conv_flag == True:
-            # self.data_values_ir = np.convolve(self.data_values_ir, np.ones(window_size)/window_size, mode='valid')
-            self.data_values_ir = butter_lowpass_filter(self.data_values_ir, 75, 160)
+        # if self.conv_flag == True:
+        #     # self.data_values_ir = np.convolve(self.data_values_ir, np.ones(window_size)/window_size, mode='valid')
+        #     self.data_values_ir = butter_lowpass_filter(self.data_values_ir, 75, 160)
         max_data_points = 50
 
         # print(f"LENGTH -> {len(self.data_values_ir)}")
@@ -239,7 +250,7 @@ if __name__ == "__main__":
     print ("Code_started")
     current_datetime = datetime.now()
     start_time = current_datetime.strftime("%dth_%b_%Y_%H_%M_%S")
-    app = DataPlotter(root, serial_port='COM3', baudrate=9600)
+    app = DataPlotter(root, serial_port='COM5', baudrate=9600)
     try:
         root.protocol("WM_DELETE_WINDOW", lambda: [app.stop_plotting(), root.destroy()])
         root.mainloop()

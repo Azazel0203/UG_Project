@@ -50,7 +50,7 @@ bool finger = true;
 char ssid[] = "AzAzEl_1234";
 char pass[] = "aadarsh@1234";
 static uint16_t df_heart_rate;
-HeartSpeed heartspeed(A1);    
+// HeartSpeed heartspeed(A1);    
 
 void mycb(uint8_t rawData, int value)
 {

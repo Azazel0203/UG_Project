@@ -1,14 +1,24 @@
 #include <Wire.h>
-// #include "DFRobot_BloodOxygen_S.h"
+#include "DFRobot_BloodOxygen_S.h"
 #include "MAX30105.h"
 #include "heartRate.h"
 
+// #include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
-// #define I2C_ADDRESS    0x57
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define MUX_Address 0x70 
 
 MAX30105 particleSensor;
-// DFRobot_BloodOxygen_S_I2C df_sensor(&Wire, I2C_ADDRESS);
+#define I2C_ADDRESS    0x57
+DFRobot_BloodOxygen_S_I2C df_sensor(&Wire, I2C_ADDRESS);
 
 
 
@@ -37,17 +47,17 @@ void tcaselect(uint8_t i2c_bus) {
     Wire.endTransmission(); 
 }
 
-// void get_df_data(){
-//   selectI2CChannels(1);
-//   df_sensor.getHeartbeatSPO2();
-//   df_spo2 = df_sensor._sHeartbeatSPO2.SPO2;
-//   df_heartrate = df_sensor._sHeartbeatSPO2.Heartbeat;
-//   delay(4000);
-// }
+void get_df_data(){
+  // tcaselect(1);
+  df_sensor.getHeartbeatSPO2();
+  df_spo2 = df_sensor._sHeartbeatSPO2.SPO2;
+  df_heartrate = df_sensor._sHeartbeatSPO2.Heartbeat;
+  delay(4000);
+}
 
 
 void get_heartrate_ppg(){
-  tcaselect(2);
+  tcaselect(0);
   ppg_irvalue = particleSensor.getIR();
   if (checkForBeat(ppg_irvalue) == true)
   {
@@ -70,24 +80,30 @@ void setup() {
 
   Serial.begin(115200);
   Serial.println("begin");
-  // selectI2CChannels(1);
-  
-  // //df_sensor
-  // while (false == df_sensor.begin())
-  // {
-  //   Serial.println("init fail!");
-  //   delay(1000);
-  // }
-  // df_sensor.sensorStartCollect();
 
-  tcaselect(2);
+  // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;);
+  }
+  while (false == df_sensor.begin())
+  {
+    Serial.println("init fail!");
+    delay(1000);
+  }
+  Serial.println("init success!");
+  Serial.println("start measuring...");
+  df_sensor.sensorStartCollect();
+  display.clearDisplay();
+
+  tcaselect(0);
   if (!particleSensor.begin(Wire, I2C_SPEED_FAST))
   {
     Serial.println("MAX30105 was not found. Please check wiring/power. ");
     while (1);
   }
 
-  tcaselect(2);
+  tcaselect(0);
   particleSensor.setup(); //Configure sensor with default settings
   particleSensor.setPulseAmplitudeRed(0x0A); //Turn Red LED to low to indicate sensor is running
   particleSensor.setPulseAmplitudeGreen(0); //Turn off Green LED
@@ -96,14 +112,23 @@ void setup() {
 void loop() {
   
   //DF BLOCK
-  // selectI2CChannels(1);
-  // get_df_data();
-  // Serial.print("DF_ROBOT -> ");
-  // Serial.print(df_spo2);
-  // Serial.print(" | ");
-  // Serial.print(df_heartrate);
+  // tcaselect(1);
+  get_df_data();
+  display.clearDisplay();
+  display.setTextSize(2);      // Normal 1:1 pixel scale
+  display.setTextColor(SSD1306_WHITE); // White text
+  display.setCursor(0, 0);     // Start at top-left corner
+  display.print("SPO2 -> ");
+  display.println(df_spo2);
+  display.print("HeartRate -> ");
+  display.println(df_heartrate);
+  display.display();
+  Serial.print("DF_ROBOT -> ");
+  Serial.print(df_spo2);
+  Serial.print(" | ");
+  Serial.println(df_heartrate);
   //PPG BLOCK
-  tcaselect(2);
+  tcaselect(0);
   get_heartrate_ppg();
   Serial.print(" || PPG -> ");
   Serial.print(ppg_irvalue);
